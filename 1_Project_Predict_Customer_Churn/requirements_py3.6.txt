@@ -12,3 +12,4 @@ weasyprint==54.3
 wandb==0.15.7
 hydra==2.5
 omegaconf==2.3
+hydra-core==1.2.0
