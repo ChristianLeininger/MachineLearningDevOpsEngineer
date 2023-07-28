@@ -1,0 +1,22 @@
+defaults:
+  - _self_  # Stuff from this file will be overwritten by the selected defaults.
+  - models: model_default
+  - wandb: wandb_default
+
+
+
+seed: 42
+log_level: info  # debug, info, warning, error, critical
+auto: True
+track: False
+pth: /home/programmer/4_master/udacity/MachineLearningDevOpsEngineer/1_Project_Predict_Customer_Churn
+train_models: False
+grid_search: False
+data:
+  file_name: BankChurners.csv
+  split_ratio: 0.8
+
+plot:
+     figsize: (15, 8)
+     alpha: 0.8
+
