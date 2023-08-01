@@ -1,8 +1,54 @@
 import os
+from omegaconf import DictConfig
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns; sns.set()
 import logging
+import wandb
+from datetime import datetime
+
+import plotly.graph_objects as go
+
+
+from logging.handlers import RotatingFileHandler
+
+def get_logger(cfg: DictConfig) -> logging.Logger:
+    """ Get logger
+
+    Args:
+        cfg (DictConfig): Configuration
+    Returns:
+        logging.Logger: Logger
+    """
+    # some assertions
+    assert isinstance(cfg, DictConfig), "cfg should be a DictConfig"
+
+    # Create a custom logger
+    logger = logging.getLogger(cfg.job_logging.name)
+    logger.setLevel(cfg.job_logging.handlers.file.level)  # Set to your desired logging level.
+
+    # Create a file handler
+    current_data_time = datetime.now().strftime("%A,_%d_%B_%Y_%H:%M:%S")
+    file_handler = RotatingFileHandler(os.path.join(cfg.pth, "logs",f"{cfg.job_logging.name}_{current_data_time}.log") , maxBytes=2000, backupCount=5)
+    file_handler.setLevel(cfg.job_logging.handlers.file.level)  # Set to your desired logging level. Here, DEBUG is chosen.
+
+    # Create a console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(cfg.job_logging.handlers.file.level)  # Set to your desired logging level. Here, ERROR is chosen.
+
+    # Create a formatter and set it for both handlers
+
+    formatter = logging.Formatter(cfg.job_logging.formatters.basic.format)
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # Add both file and console handlers to the logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger
+
 
 
 def get_categorical_columns(df: pd.DataFrame) -> list:
@@ -19,9 +65,38 @@ def get_categorical_columns(df: pd.DataFrame) -> list:
 
 
 
-def save_plot(df: pd.DataFrame, feature: str, save_path: str) -> None:
-    """ Save plot to file  
-    
+def save_df_head(df: pd.DataFrame, save_path: str, figsize: tuple) -> None:
+    """ Save head of Pandas DataFrame to image file
+    Args:
+        df (pd.DataFrame): Pandas DataFrame
+        save_path (str): Path to save plot
+        figsize (tuple): Size of plot
+    """
+
+    logging.info(f"Saving head of Pandas DataFrame to {save_path} ....")
+
+    fig, ax = plt.subplots()
+    # Adjust bbox values as needed to center the table
+    # Create the table and set cell padding
+    data = df.head().T.round(2)
+    table = plt.table(cellText=data.values,
+                    colLabels=df.index,
+                    rowLabels=df.columns,
+                    cellLoc='center',
+                    loc='center',
+                    )
+
+    table.auto_set_column_width(col=list(range(len(df.columns))))
+    ax.axis('off')
+    plt.savefig(os.path.join(save_path, 'Head.png'), bbox_inches='tight')
+    plt.close()
+    plt.clf()
+    logging.info(f"Saved head of Pandas DataFrame to {save_path}")
+
+
+def save_plot(df: pd.DataFrame, feature: str, save_path: str, figsize: tuple) -> None:
+    """ Save plot to file
+
     Args:
         df (pd.DataFrame): Pandas DataFrame
         feature (str): Feature to plot
@@ -40,7 +115,7 @@ def save_plot(df: pd.DataFrame, feature: str, save_path: str) -> None:
         return
 
     # Create a figure
-    plt.figure(figsize=(20, 10))
+    plt.figure(figsize=figsize)
     df[feature].hist()
     # Add axis labels
     plt.xlabel(f"{feature}")
@@ -81,22 +156,16 @@ def save_describtion(df: pd.DataFrame, save_path: str, file_name: str) -> None:
         else:
             logging.info(f"{feature} not in df")
 
-    
-    save_path = os.path.join(save_path, 'descriptive_statistics.png')
+
+    save_path = os.path.join(save_path, 'Descriptive_statistics.png')
     # if already image already exists return
     if os.path.exists(save_path):
         logging.info(f"Image already exists at {save_path}")
         return
-    # Get descriptive statistics
+
+
     desc_stats = df.describe().round(2)
 
-   
-    # import pdb; pdb.set_trace()
-    # Split the columns into two sets
-    # TODO fix this plots are false
-    # Save the tables as images
-    desc_stats = df.describe().round(2)
-     
     fig, ax = plt.subplots()
     # Adjust bbox values as needed to center the table
     # Create the table and set cell padding
@@ -113,15 +182,111 @@ def save_describtion(df: pd.DataFrame, save_path: str, file_name: str) -> None:
     logging.info(f"Saved plot to {save_path}")
 
 
+def save_statistics(df: pd.DataFrame, column: str, save_path: str, size: tuple = (20,10)) -> None:
+    """ Plot statistics for a column
+    Args:
+        df (pd.DataFrame): Pandas DataFrame
+        column (str): Column to plot
+        save_path (str): Path to save plot
+        size (tuple): Size of plot
+    Returns:
+        None
+    """
+    # some assertions
+    assert isinstance(df, pd.DataFrame), "df should be a Pandas DataFrame"
+    assert isinstance(column, str), "column should be a string"
+    assert column in df.columns, "column should be in df"
+    assert isinstance(size, tuple), "size should be a tuple"
+    save_path = os.path.join(save_path, f'{column}.png')
+    plt.figure(figsize=size)
+    df[column].value_counts('normalize').plot(kind='bar')
+    plt.title(f"Statistics for {column}")
+    plt.ylabel('Frequency')
+    plt.xlabel(f"{column}")
+    plt.savefig(save_path, bbox_inches='tight')
+    logging.info(f"Saved plot to {save_path}")
 
 
+def save_histplot(df: pd.DataFrame, column: str = 'Total_Trans_Ct', save_path: str = "default", size: tuple = (20,10)) -> None:
+    """ Plot statistics for a column
+    Args:
+        df (pd.DataFrame): Pandas DataFrame
+        column (str): Column to plot
+        save_path (str): Path to save plot
+        size (tuple): Size of plot
+    Returns:
+        None
+    """
+    # some assertions
+    assert isinstance(df, pd.DataFrame), "df should be a Pandas DataFrame"
+    assert isinstance(column, str), "column should be a string"
+    assert column in df.columns, "column should be in df"
+    assert isinstance(size, tuple), "size should be a tuple"
+    assert isinstance(save_path, str), "save_path should be a string"
+    if save_path is "default":
+        save_path = os.path.join(os.getcwd(), 'images')
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        logging.info("Set save_path its default value")
+        logging.info(f"save_path set to {save_path}")
+    save_path = os.path.join(save_path, f'{column}.png')
+    plt.figure(figsize=size)
+    # Show distributions of 'Total_Trans_Ct' and add a smooth curve obtained using a kernel density estimate
+    sns.histplot(df[column], stat='density', kde=True)
+    plt.title(f"Distribution of {column}")
+    plt.ylabel('Frequency')
+    plt.xlabel(f"{column}")
+    plt.savefig(save_path, bbox_inches='tight')
+    logging.info(f"Saved plot to {save_path}")
 
 
+def save_correlation_matrix(df: pd.DataFrame, save_path: str = "default", size: tuple = (20,10), max_name_length: int = 30) -> None:
+    """ Plot statistics for a column
+    Args:
+        df (pd.DataFrame): Pandas DataFrame
+        save_path (str): Path to save plot
+        size (tuple): Size of plot
+        max_name_length (int): Maximum length of column name
+    Returns:
+        None
+    """
+    # some assertions
+    assert isinstance(df, pd.DataFrame), "df should be a Pandas DataFrame"
+    assert isinstance(size, tuple), "size should be a tuple"
+    assert isinstance(save_path, str), "save_path should be a string"
+    assert isinstance(max_name_length, int), "max_name_length should be an integer"
+    if save_path is "default":
+        save_path = os.path.join(os.getcwd(), 'images')
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        logging.info("Set save_path its default value")
+        logging.info(f"save_path set to {save_path}")
+    save_path = os.path.join(save_path, 'Correlation_matrix.png')
+    # rename to long column names
+    df.rename(columns=lambda x: x if len(x) <= max_name_length else x [:max_name_length], inplace=True)
+    plt.figure(figsize=size)
+    sns.heatmap(df.corr(), annot=True, cmap='Dark2_r', linewidths = 2)
+    plt.savefig(save_path, bbox_inches='tight')
 
 
-
-   
-    
-
-
-
+def wandb_track_images(run: wandb.run, image_path: str = "default") -> None:
+    """ Track images with wandb
+    Args:
+        run (wandb.run): Wandb run
+        image_path (str): Path to save plot
+    Returns: None
+    """
+    # some assertions
+    assert isinstance(run, wandb.sdk.wandb_run.Run), "run should be a wandb.run"
+    assert isinstance(image_path, str), "save_path should be a string"
+    if image_path is "default":
+        logging.info("Set image_path its default value")
+        logging.info("Set image_path to images")
+        return
+    # Get all files in image_path
+    image_files = [file for file in os.listdir(image_path) if file.endswith((".png", ".jpg", ".jpeg"))]
+    # Log all files to wandb
+    for image_file in image_files:
+        run.log({f"{image_file}": wandb.Image(os.path.join(image_path, image_file))})
+        logging.info(f"Logged {image_file} to wandb")
+    logging.info(f"Logged {len(image_files)} images to wandb")
